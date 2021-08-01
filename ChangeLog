@@ -1,0 +1,27 @@
+2021-08-01  Danilo Chang
+
+	* README.md: Add examples
+	* VecTcl NumArray_Int type is long int, update code to handle it
+
+2021-07-31  Danilo Chang
+
+	* configure.ac: Try to find vectcl then use it
+	* Implement ::opencl::createKernel command
+	* Implement ::opencl::createProgramWithBinary command
+	* Implement ::opencl::createProgramWithSource command
+
+2021-07-30  Danilo Chang
+
+	* Implement ::opencl::createCommandQueue command
+	* Implement ::opencl::createContext command
+
+2021-07-29  Danilo Chang
+
+	* Implement ::opencl::getDeviceID command
+	* Implement ::opencl::getPlatformID command
+
+2021-07-27  Danilo Chang
+
+	* Update package name to opencl
+	* Dump sample extension
+
