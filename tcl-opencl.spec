@@ -16,6 +16,7 @@ BuildRequires: make
 BuildRequires: tcl-devel >= 8.6
 BuildRequires: vectcl-devel
 BuildRequires: ocl-icd-devel
+BuildRequires: opencl-headers
 Requires:      tcl >= 8.6
 Requires:      vectcl
 Requires:      ocl-icd-devel
