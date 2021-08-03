@@ -1,5 +1,6 @@
 2021-08-03  Danilo Chang
 
+	* Bump version to v0.2
 	* enqueueNDRangeKernel parameters changed
 	* setKernelArg will accept buffer and image, changed from mem
 	* Implement ::opencl::createImage command
