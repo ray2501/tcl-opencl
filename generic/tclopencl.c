@@ -17,6 +17,7 @@ typedef struct ThreadSpecificData {
     int program_count;
     int kernel_count;
     int buffer_count;
+    int image_count;
 } ThreadSpecificData;
 
 static Tcl_ThreadDataKey dataKey;
@@ -29,6 +30,13 @@ typedef struct clBufferInfo {
     size_t length;
 } clBufferInfo;
 
+typedef struct clImageInfo {
+    cl_mem mem;
+    size_t width;
+    size_t height;
+    size_t channel;
+} clImageInfo;
+
 
 void OPENCL_Thread_Exit(ClientData clientdata)
 {
@@ -39,6 +47,243 @@ void OPENCL_Thread_Exit(ClientData clientdata)
         Tcl_DeleteHashTable(tsdPtr->cl_hashtblPtr);
         ckfree(tsdPtr->cl_hashtblPtr);
     }
+}
+
+
+/*
+ * For Image API
+ */
+static int IMAGE_FUNCTION(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*objv){
+    int choice;
+    Tcl_HashEntry *hashEntryPtr;
+    char *handle;
+    clImageInfo *imageinfo = NULL;
+
+    ThreadSpecificData *tsdPtr = (ThreadSpecificData *)
+        Tcl_GetThreadData(&dataKey, sizeof(ThreadSpecificData));
+
+    if (tsdPtr->initialized == 0) {
+        tsdPtr->initialized = 1;
+        tsdPtr->cl_hashtblPtr = (Tcl_HashTable *) ckalloc(sizeof(Tcl_HashTable));
+        Tcl_InitHashTable(tsdPtr->cl_hashtblPtr, TCL_STRING_KEYS);
+    }
+
+    static const char *FUNC_strs[] = {
+        "close",
+        0
+    };
+
+    enum FUNC_enum {
+        FUNC_CLOSE,
+    };
+
+    if( objc < 2 ){
+        Tcl_WrongNumArgs(interp, 1, objv, "SUBCOMMAND ...");
+        return TCL_ERROR;
+    }
+
+    if( Tcl_GetIndexFromObj(interp, objv[1], FUNC_strs, "option", 0, &choice) ){
+        return TCL_ERROR;
+    }
+
+    handle = Tcl_GetStringFromObj(objv[0], 0);
+    hashEntryPtr = Tcl_FindHashEntry( tsdPtr->cl_hashtblPtr, handle );
+    if( !hashEntryPtr ) {
+        if( interp ) {
+            Tcl_Obj *resultObj = Tcl_GetObjResult( interp );
+            Tcl_AppendStringsToObj( resultObj, "invalid buffer handle ",
+                                    handle, (char *)NULL );
+        }
+
+        return TCL_ERROR;
+    }
+
+    imageinfo = (clImageInfo *) Tcl_GetHashValue( hashEntryPtr );
+
+    switch( (enum FUNC_enum)choice ){
+        case FUNC_CLOSE: {
+            if( objc != 2 ){
+                Tcl_WrongNumArgs(interp, 2, objv, 0);
+                return TCL_ERROR;
+            }
+
+            if (imageinfo) {
+                clReleaseMemObject( imageinfo->mem );
+                ckfree(imageinfo);
+            }
+            imageinfo = NULL;
+
+            Tcl_MutexLock(&myMutex);
+            if( hashEntryPtr )  Tcl_DeleteHashEntry(hashEntryPtr);
+            Tcl_MutexUnlock(&myMutex);
+
+            Tcl_DeleteCommand(interp, handle);
+            Tcl_SetObjResult(interp, Tcl_NewIntObj( 0 ));
+
+            break;
+        }
+    }
+
+    return TCL_OK;
+}
+
+
+static int createImage(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*objv){
+    cl_int err = CL_SUCCESS;
+    cl_context context;
+    cl_mem mem;
+    cl_mem_flags flags = CL_MEM_READ_WRITE;
+    cl_image_format imgformat;
+    cl_image_desc clImageDesc;
+    Tcl_HashEntry *newHashEntryPtr;
+    Tcl_HashEntry *hashEntryPtr;
+    Tcl_Obj *pResultStr = NULL;
+    char handleName[16 + TCL_INTEGER_SPACE];
+    int newvalue;
+    char *chandle = NULL;
+    char *flag = NULL;
+    char *format = NULL;
+    char *imagetype = NULL;
+    int width = 0;
+    int height = 0;
+    int len = 0;
+    clImageInfo *imageinfo;
+
+    ThreadSpecificData *tsdPtr = (ThreadSpecificData *)
+      Tcl_GetThreadData(&dataKey, sizeof(ThreadSpecificData));
+
+    if (tsdPtr->initialized == 0) {
+      tsdPtr->initialized = 1;
+      tsdPtr->cl_hashtblPtr = (Tcl_HashTable *) ckalloc(sizeof(Tcl_HashTable));
+      Tcl_InitHashTable(tsdPtr->cl_hashtblPtr, TCL_STRING_KEYS);
+    }
+
+    if (objc !=7) {
+        Tcl_WrongNumArgs(interp, 1, objv, "context flags format imagetype width height");
+        return TCL_ERROR;
+    }
+
+    chandle = Tcl_GetStringFromObj(objv[1], 0);
+    hashEntryPtr = Tcl_FindHashEntry( tsdPtr->cl_hashtblPtr, chandle );
+    if( !hashEntryPtr ) {
+        if( interp ) {
+            Tcl_Obj *resultObj = Tcl_GetObjResult( interp );
+            Tcl_AppendStringsToObj( resultObj, "invalid context handle ",
+                                    chandle, (char *)NULL );
+        }
+
+        return TCL_ERROR;
+    }
+
+    context = (cl_context) Tcl_GetHashValue( hashEntryPtr );
+
+    flag = Tcl_GetStringFromObj(objv[2], &len);
+    if( !flag || len < 1 ){
+        return TCL_ERROR;
+    }
+
+    format = Tcl_GetStringFromObj(objv[3], &len);
+    if( !format || len < 1 ){
+        return TCL_ERROR;
+    }
+
+    imagetype = Tcl_GetStringFromObj(objv[4], &len);
+    if( !imagetype || len < 1 ){
+        return TCL_ERROR;
+    }
+
+    if(Tcl_GetLongFromObj(interp, objv[5], (long *) &width) != TCL_OK) {
+        return TCL_ERROR;
+    }
+
+    if(Tcl_GetLongFromObj(interp, objv[6], (long *) &height) != TCL_OK) {
+        return TCL_ERROR;
+    }
+
+    if(strcmp(flag, "r")==0) {
+        flags = CL_MEM_READ_ONLY;
+    } else if(strcmp(flag, "w")==0) {
+        flags = CL_MEM_WRITE_ONLY;
+    } else if(strcmp(flag, "rw")==0) {
+        flags = CL_MEM_READ_WRITE;
+    } else {
+        if( interp ) {
+            Tcl_Obj *resultObj = Tcl_GetObjResult( interp );
+            Tcl_AppendStringsToObj( resultObj, "Wrong cl_mem_flags", (char *)NULL );
+        }
+        return TCL_ERROR;
+    }
+
+    /*
+     * Now only support RGBA format
+     */
+    imgformat.image_channel_data_type = CL_UNSIGNED_INT8;
+    if (strcmp(format, "rgba") == 0) {
+        imgformat.image_channel_order = CL_RGBA;
+    } else {
+        if( interp ) {
+            Tcl_Obj *resultObj = Tcl_GetObjResult( interp );
+            Tcl_AppendStringsToObj( resultObj, "Wrong cl_image_format", (char *)NULL );
+        }
+        return TCL_ERROR;
+    }
+
+    /*
+     * Now only support CL_MEM_OBJECT_IMAGE2D image type
+     */
+    if (strcmp(imagetype, "image2d") == 0) {
+        clImageDesc.image_type = CL_MEM_OBJECT_IMAGE2D;
+        clImageDesc.image_width = width;
+        clImageDesc.image_height = height;
+        clImageDesc.image_row_pitch = 0;
+        clImageDesc.image_slice_pitch = 0;
+        clImageDesc.num_mip_levels = 0;
+        clImageDesc.num_samples = 0;
+        clImageDesc.buffer = NULL;
+    } else {
+        if( interp ) {
+            Tcl_Obj *resultObj = Tcl_GetObjResult( interp );
+            Tcl_AppendStringsToObj( resultObj, "Wrong cl_image_desc", (char *)NULL );
+        }
+        return TCL_ERROR;
+    }
+
+#if TCLOPENCL_CL_VERSION > 0x1020
+    mem = clCreateImage(context, flags,
+                        &imgformat, &clImageDesc, NULL, &err);
+#else
+    mem = clCreateImage2D (context, flags,
+                           &imgformat, width, height, 0, NULL, &err);
+#endif
+    if (mem == NULL || err != CL_SUCCESS) {
+        if( interp ) {
+            Tcl_Obj *resultObj = Tcl_GetObjResult( interp );
+            Tcl_AppendStringsToObj( resultObj, "clCreateImage failed",
+                                    (char *)NULL );
+        }
+        return TCL_ERROR;
+    }
+
+    imageinfo = (clImageInfo *) ckalloc (sizeof(clImageInfo));
+    imageinfo->mem = mem;
+    imageinfo->width = width;
+    imageinfo->height = height;
+    imageinfo->channel = 4;
+
+    Tcl_MutexLock(&myMutex);
+    sprintf( handleName, "cl-image%d", tsdPtr->image_count++ );
+
+    pResultStr = Tcl_NewStringObj( handleName, -1 );
+
+    newHashEntryPtr = Tcl_CreateHashEntry(tsdPtr->cl_hashtblPtr, handleName, &newvalue);
+    Tcl_SetHashValue(newHashEntryPtr, imageinfo);
+    Tcl_MutexUnlock(&myMutex);
+
+    Tcl_CreateObjCommand(interp, handleName, (Tcl_ObjCmdProc *) IMAGE_FUNCTION,
+        (ClientData)NULL, (Tcl_CmdDeleteProc *)NULL);
+
+    Tcl_SetObjResult(interp, pResultStr);
+    return TCL_OK;
 }
 
 
@@ -317,7 +562,7 @@ static int KERNEL_FUNCTION(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const
             }
 
             type = Tcl_GetStringFromObj(objv[3], 0);
-            if(strcmp(type, "mem")==0) {
+            if(strcmp(type, "buffer")==0) {
                 char *bhandle = NULL;
                 clBufferInfo *bufferinfo = NULL;
 
@@ -337,6 +582,34 @@ static int KERNEL_FUNCTION(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const
 
                 err = clSetKernelArg(kernel, index, sizeof(cl_mem),
                                      (const void *) &(bufferinfo->mem));
+                if (err != CL_SUCCESS) {
+                    if( interp ) {
+                        Tcl_Obj *resultObj = Tcl_GetObjResult( interp );
+                        Tcl_AppendStringsToObj( resultObj, "clSetKernelArg failed",
+                                                (char *)NULL );
+                    }
+                    return TCL_ERROR;
+                }
+            } else if(strcmp(type, "image")==0) {
+                char *bhandle = NULL;
+                clImageInfo *imageinfo = NULL;
+
+                bhandle = Tcl_GetStringFromObj(objv[4], 0);
+                hashEntryPtr = Tcl_FindHashEntry( tsdPtr->cl_hashtblPtr, bhandle );
+                if( !hashEntryPtr ) {
+                    if( interp ) {
+                        Tcl_Obj *resultObj = Tcl_GetObjResult( interp );
+                        Tcl_AppendStringsToObj( resultObj, "invalid image handle ",
+                                                bhandle, (char *)NULL );
+                    }
+
+                    return TCL_ERROR;
+                }
+
+                imageinfo = (clImageInfo *) Tcl_GetHashValue( hashEntryPtr );
+
+                err = clSetKernelArg(kernel, index, sizeof(cl_mem),
+                                     (const void *) &(imageinfo->mem));
                 if (err != CL_SUCCESS) {
                     if( interp ) {
                         Tcl_Obj *resultObj = Tcl_GetObjResult( interp );
@@ -847,6 +1120,9 @@ static int QUEUE_FUNCTION(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*
         "enqueueWriteBuffer",
         "enqueueReadBuffer",
         "enqueueCopyBuffer",
+        "enqueueWriteImage",
+        "enqueueReadImage",
+        "enqueueCopyImage",
         "enqueueNDRangeKernel",
         "flush",
         "finish",
@@ -858,6 +1134,9 @@ static int QUEUE_FUNCTION(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*
         FUNC_ENQUEUEWRITEBUFFER,
         FUNC_ENQUEUEREADBUFFER,
         FUNC_ENQUEUECOPYBUFFER,
+        FUNC_ENQUEUEWRITEIMAGE,
+        FUNC_ENQUEUEREADIMAGE,
+        FUNC_ENQUEUECOPYIMAGE,
         FUNC_ENQUEUENDRANGEKERNEL,
         FUNC_FLUSH,
         FUNC_FINISH,
@@ -1163,15 +1442,210 @@ static int QUEUE_FUNCTION(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*
 
             break;
         }
+        case FUNC_ENQUEUEWRITEIMAGE: {
+            char *bhandle = NULL;
+            clImageInfo *image = NULL;
+            unsigned char *bytearray = NULL;
+            int length = 0;
+
+            if( objc != 4 ){
+                Tcl_WrongNumArgs(interp, 2, objv, "image bytearray");
+                return TCL_ERROR;
+            }
+
+            bhandle = Tcl_GetStringFromObj(objv[2], 0);
+            hashEntryPtr = Tcl_FindHashEntry( tsdPtr->cl_hashtblPtr, bhandle );
+            if( !hashEntryPtr ) {
+                if( interp ) {
+                    Tcl_Obj *resultObj = Tcl_GetObjResult( interp );
+                    Tcl_AppendStringsToObj( resultObj, "invalid buffer handle ",
+                                            bhandle, (char *)NULL );
+                }
+
+                return TCL_ERROR;
+            }
+
+            image = (clImageInfo *) Tcl_GetHashValue( hashEntryPtr );
+
+            bytearray = Tcl_GetByteArrayFromObj(objv[3], &length);
+            if (!bytearray) {
+                if( interp ) {
+                    Tcl_Obj *resultObj = Tcl_GetObjResult( interp );
+                    Tcl_AppendStringsToObj( resultObj, "Get Byte Array failed",
+                                            (char *)NULL );
+                }
+
+                return TCL_ERROR;
+            }
+
+            if (length == image->width * image->height * image->channel) {
+                size_t origin[3] = {0, 0, 0};
+                size_t region[3] = {image->width, image->height, 1};
+
+                err = clEnqueueWriteImage( queue, image->mem, CL_TRUE,
+                                           origin, region, 0, 0,
+                                           bytearray, 0, NULL, NULL);
+            } else {
+                if( interp ) {
+                    Tcl_Obj *resultObj = Tcl_GetObjResult( interp );
+                    Tcl_AppendStringsToObj( resultObj, "Get Byte Array failed",
+                                            (char *)NULL );
+                }
+
+                return TCL_ERROR;
+            }
+
+            if (err != CL_SUCCESS) {
+               if( interp ) {
+                   Tcl_Obj *resultObj = Tcl_GetObjResult( interp );
+                   Tcl_AppendStringsToObj( resultObj, "clEnqueueWriteImage failed",
+                                           (char *)NULL );
+               }
+
+               return TCL_ERROR;
+            }
+
+            break;
+        }
+        case FUNC_ENQUEUEREADIMAGE: {
+            char *bhandle = NULL;
+            clImageInfo *image = NULL;
+            unsigned char *byteptr = NULL;
+            Tcl_Obj *result = NULL;
+            int length = 0;
+
+            if( objc != 3 ){
+                Tcl_WrongNumArgs(interp, 2, objv, "image");
+                return TCL_ERROR;
+            }
+
+            bhandle = Tcl_GetStringFromObj(objv[2], 0);
+            hashEntryPtr = Tcl_FindHashEntry( tsdPtr->cl_hashtblPtr, bhandle );
+            if( !hashEntryPtr ) {
+                if( interp ) {
+                    Tcl_Obj *resultObj = Tcl_GetObjResult( interp );
+                    Tcl_AppendStringsToObj( resultObj, "invalid buffer handle ",
+                                            bhandle, (char *)NULL );
+                }
+
+                return TCL_ERROR;
+            }
+
+            image = (clImageInfo *) Tcl_GetHashValue( hashEntryPtr );
+
+            length = image->width * image->height  * image->channel;
+            byteptr = (unsigned char *) malloc(length * sizeof(unsigned char));
+            if(byteptr) {
+                size_t origin[3] = {0, 0, 0};
+                size_t region[3] = {image->width, image->height, 1};
+
+                err = clEnqueueReadImage( queue, image->mem, CL_TRUE,
+                                          origin, region,
+                                          image->width * sizeof(unsigned char) * 4, 0,
+                                          byteptr, 0, NULL, NULL);
+            } else {
+                if( interp ) {
+                    Tcl_Obj *resultObj = Tcl_GetObjResult( interp );
+                    Tcl_AppendStringsToObj( resultObj, "malloc byte array failed",
+                                            (char *)NULL );
+                }
+
+                return TCL_ERROR;
+            }
+
+            if (err != CL_SUCCESS) {
+               if (byteptr) free(byteptr);
+               if( interp ) {
+                   Tcl_Obj *resultObj = Tcl_GetObjResult( interp );
+                   Tcl_AppendStringsToObj( resultObj, "clEnqueueReadImage failed",
+                                           (char *)NULL );
+               }
+
+               return TCL_ERROR;
+            }
+
+            result = Tcl_NewByteArrayObj(byteptr, length);
+            Tcl_SetObjResult(interp, result);
+            if (byteptr) free(byteptr);
+            break;
+        }
+        case FUNC_ENQUEUECOPYIMAGE: {
+            char *shandle = NULL;
+            char *dhandle = NULL;
+            clImageInfo *image1 = NULL;
+            clImageInfo *image2 = NULL;
+
+            if( objc != 4 ){
+                Tcl_WrongNumArgs(interp, 2, objv, "srcImage srcImage");
+                return TCL_ERROR;
+            }
+
+            shandle = Tcl_GetStringFromObj(objv[2], 0);
+            hashEntryPtr = Tcl_FindHashEntry( tsdPtr->cl_hashtblPtr, shandle );
+            if( !hashEntryPtr ) {
+                if( interp ) {
+                    Tcl_Obj *resultObj = Tcl_GetObjResult( interp );
+                    Tcl_AppendStringsToObj( resultObj, "invalid src buffer handle ",
+                                            shandle, (char *)NULL );
+                }
+
+                return TCL_ERROR;
+            }
+
+            image1 = (clImageInfo *) Tcl_GetHashValue( hashEntryPtr );
+
+            dhandle = Tcl_GetStringFromObj(objv[3], 0);
+            hashEntryPtr = Tcl_FindHashEntry( tsdPtr->cl_hashtblPtr, dhandle );
+            if( !hashEntryPtr ) {
+                if( interp ) {
+                    Tcl_Obj *resultObj = Tcl_GetObjResult( interp );
+                    Tcl_AppendStringsToObj( resultObj, "invalid dst buffer handle ",
+                                            dhandle, (char *)NULL );
+                }
+
+                return TCL_ERROR;
+            }
+
+            image2 = (clImageInfo *) Tcl_GetHashValue( hashEntryPtr );
+
+            if (image1->width == image2->width && image1->height == image2->height &&
+                image1->channel == image2->channel)
+            {
+                size_t origin[3] = {0, 0, 0};
+                size_t region[3] = {image1->width, image1->height, 1};
+                err = clEnqueueCopyImage( queue, image1->mem, image2->mem,
+                                          origin, origin, region, 0, NULL, NULL );
+            } else {
+               if( interp ) {
+                   Tcl_Obj *resultObj = Tcl_GetObjResult( interp );
+                   Tcl_AppendStringsToObj( resultObj, "Copy: something is wrong", (char *)NULL );
+               }
+
+               return TCL_ERROR;
+            }
+
+            if (err != CL_SUCCESS) {
+               if( interp ) {
+                   Tcl_Obj *resultObj = Tcl_GetObjResult( interp );
+                   Tcl_AppendStringsToObj( resultObj, "clEnqueueCopyBuffer failed",
+                                           (char *)NULL );
+               }
+
+               return TCL_ERROR;
+            }
+
+            break;
+        }
         case FUNC_ENQUEUENDRANGEKERNEL: {
             char *handle = NULL;
             cl_kernel kernel;
+            unsigned int work_dim;
             size_t global_work_size = 0;
             size_t local_work_size = 0;
 
-            if( objc != 5 ){
+            if( objc != 6 ){
                 Tcl_WrongNumArgs(interp, 2, objv,
-                                 "kernel global_work_size local_work_size");
+                                 "kernel work_dim global_work_size local_work_size");
                 return TCL_ERROR;
             }
 
@@ -1189,24 +1663,92 @@ static int QUEUE_FUNCTION(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*
 
             kernel = (cl_kernel) Tcl_GetHashValue( hashEntryPtr );
 
-            if(Tcl_GetLongFromObj(interp, objv[3], (long int *) &global_work_size) != TCL_OK) {
+            if(Tcl_GetIntFromObj(interp, objv[3], (int *) &work_dim) != TCL_OK) {
                 return TCL_ERROR;
             }
 
-            if(Tcl_GetLongFromObj(interp, objv[4], (long int *) &local_work_size) != TCL_OK) {
-                return TCL_ERROR;
-            }
+            if(work_dim==1) {
+                if(Tcl_GetLongFromObj(interp, objv[4], (long int *) &global_work_size) != TCL_OK) {
+                    return TCL_ERROR;
+                }
 
-             err = clEnqueueNDRangeKernel(queue, kernel, 1, NULL,
-                    &global_work_size, &local_work_size, 0, NULL, NULL);
-             if (err != CL_SUCCESS) {
-               if( interp ) {
-                   Tcl_Obj *resultObj = Tcl_GetObjResult( interp );
-                   Tcl_AppendStringsToObj( resultObj, "clEnqueueNDRangeKernel failed",
-                                           (char *)NULL );
-               }
+                if(Tcl_GetLongFromObj(interp, objv[5], (long int *) &local_work_size) != TCL_OK) {
+                    return TCL_ERROR;
+                }
 
-               return TCL_ERROR;
+                err = clEnqueueNDRangeKernel(queue, kernel, work_dim, NULL,
+                        &global_work_size, &local_work_size, 0, NULL, NULL);
+                if (err != CL_SUCCESS) {
+                    if( interp ) {
+                        Tcl_Obj *resultObj = Tcl_GetObjResult( interp );
+                        Tcl_AppendStringsToObj( resultObj, "clEnqueueNDRangeKernel failed",
+                                            (char *)NULL );
+                    }
+
+                    return TCL_ERROR;
+                }
+            } else {
+                int count1 = 0;
+                int count2 = 0;
+                int count = 0;
+                Tcl_Obj *elemListPtr = NULL;
+
+                if(Tcl_ListObjLength(interp, objv[4], &count1) != TCL_OK) {
+                    return TCL_ERROR;
+                }
+
+                if(Tcl_ListObjLength(interp, objv[5], &count2) != TCL_OK) {
+                    return TCL_ERROR;
+                }
+
+                if(work_dim != count1 || work_dim != count2) {
+                    return TCL_ERROR;
+                }
+
+                size_t *global_work_size = (size_t *) malloc(sizeof(size_t) * count1);
+                size_t *local_work_size = (size_t *) malloc(sizeof(size_t) * count2);
+
+                for(count = 0; count < count1; count++) {
+                    long x = 0;
+                    Tcl_ListObjIndex(interp, objv[4], count, &elemListPtr);
+                    if(Tcl_GetLongFromObj(interp, elemListPtr, &x) != TCL_OK) {
+                        if(global_work_size) free(global_work_size);
+                        if(local_work_size) free(local_work_size);
+                        return TCL_ERROR;
+                    }
+
+                    global_work_size[count] = x;
+                }
+
+                for(count = 0; count < count2; count++) {
+                    long x = 0;
+                    Tcl_ListObjIndex(interp, objv[5], count, &elemListPtr);
+                    if(Tcl_GetLongFromObj(interp, elemListPtr, &x) != TCL_OK) {
+                        if(global_work_size) free(global_work_size);
+                        if(local_work_size) free(local_work_size);
+                        return TCL_ERROR;
+                    }
+
+                    local_work_size[count] = x;
+                }
+
+                err = clEnqueueNDRangeKernel(queue, kernel, work_dim, NULL,
+                        global_work_size, local_work_size, 0, NULL, NULL);
+                if (err != CL_SUCCESS) {
+                    if(global_work_size) free(global_work_size);
+                    if(local_work_size) free(local_work_size);
+
+                    if( interp ) {
+                        Tcl_Obj *resultObj = Tcl_GetObjResult( interp );
+                        Tcl_AppendStringsToObj( resultObj, "clEnqueueNDRangeKernel failed",
+                                            (char *)NULL );
+                    }
+
+                    return TCL_ERROR;
+                }
+
+                if(global_work_size) free(global_work_size);
+                if(local_work_size) free(local_work_size);
             }
 
             break;
@@ -2342,6 +2884,10 @@ Opencl_Init(Tcl_Interp *interp)
 
     Tcl_CreateObjCommand(interp, NS "::createBuffer",
         (Tcl_ObjCmdProc *) createBuffer,
+        (ClientData)NULL, (Tcl_CmdDeleteProc *)NULL);
+
+    Tcl_CreateObjCommand(interp, NS "::createImage",
+        (Tcl_ObjCmdProc *) createImage,
         (ClientData)NULL, (Tcl_CmdDeleteProc *)NULL);
 
     return TCL_OK;

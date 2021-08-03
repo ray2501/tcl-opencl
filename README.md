@@ -68,10 +68,12 @@ contextHandle close
 commandQueueHandle enqueueWriteBuffer buffer numarray  
 commandQueueHandle enqueueReadBuffer buffer  
 commandQueueHandle enqueueCopyBuffer srcBuffer dstBuffer  
-commandQueueHandle enqueueNDRangeKernel kernel global_work_size local_work_size  
+commandQueueHandle enqueueNDRangeKernel kernel work_dim global_work_size local_work_size  
 commandQueueHandle flush  
 commandQueueHandle finish  
 commandQueueHandle close  
+
+When work_dim > 1, global_work_size and local_work_size should be a list.
 
 
 ### Program
@@ -93,7 +95,7 @@ kernelHandle setKernelArg index type value
 kernelHandle close  
 
 `type` value should be -  
-mem, int, long, double
+buffer, image, int, long, double
 
 
 ### Memory Object
@@ -106,6 +108,43 @@ r, w, rw
 
 `type` value should be -  
 int, long, double
+
+::opencl::createImage context flags format imagetype width height  
+imageHandle close  
+
+`flags` value should be -  
+r, w, rw  
+
+format value should be -  
+rgba  
+
+imagetype value should be -  
+image2d  
+
+
+UNIX BUILD
+=====
+
+Before building tcl-opencl, you need have VecTcl, ocl-icd and PoCL development
+files.
+
+Building under most UNIX systems is easy, just run the configure script
+and then run make. For more information about the build process, see
+the tcl/unix/README file in the Tcl src dist. The following minimal
+example will install the extension in the /opt/tcl directory.
+
+    $ cd tcl-opencl
+    $ ./configure --prefix=/opt/tcl
+    $ make
+    $ make install
+
+If you need setup directory containing tcl configuration (tclConfig.sh),
+below is an example:
+
+    $ cd tcl-opencl
+    $ ./configure --with-tcl=/opt/activetcl/lib
+    $ make
+    $ make install
 
 
 Examples
@@ -184,11 +223,11 @@ Execute a function -
 
         $queue enqueueWriteBuffer $buffer1 $A
 
-        $kernel setKernelArg 0 mem $buffer1
+        $kernel setKernelArg 0 buffer $buffer1
 
         for {set c 2} {$c <= $c_max} {incr c} {
             $kernel setKernelArg 1 int $c
-            $queue enqueueNDRangeKernel $kernel $N $N
+            $queue enqueueNDRangeKernel $kernel 1 $N $N
         }
         $queue finish
 
@@ -253,11 +292,11 @@ Execute a function -
         $queue enqueueWriteBuffer $buffer1 $A
         $queue enqueueWriteBuffer $buffer2 $B
 
-        $kernel setKernelArg 0 mem $buffer1
-        $kernel setKernelArg 1 mem $buffer2
-        $kernel setKernelArg 2 mem $buffer3
+        $kernel setKernelArg 0 buffer $buffer1
+        $kernel setKernelArg 1 buffer $buffer2
+        $kernel setKernelArg 2 buffer $buffer3
 
-        $queue enqueueNDRangeKernel $kernel 1024 64
+        $queue enqueueNDRangeKernel $kernel 1 1024 64
         $queue finish
 
         set C [$queue enqueueReadBuffer $buffer3]
@@ -355,11 +394,11 @@ Execue a function by using binary file -
         $queue enqueueWriteBuffer $buffer1 $A
         $queue enqueueWriteBuffer $buffer2 $B
 
-        $kernel setKernelArg 0 mem $buffer1
-        $kernel setKernelArg 1 mem $buffer2
-        $kernel setKernelArg 2 mem $buffer3
+        $kernel setKernelArg 0 buffer $buffer1
+        $kernel setKernelArg 1 buffer $buffer2
+        $kernel setKernelArg 2 buffer $buffer3
 
-        $queue enqueueNDRangeKernel $kernel 1024 64
+        $queue enqueueNDRangeKernel $kernel 1 1024 64
         $queue finish
         set C [$queue enqueueReadBuffer $buffer3]
         $queue finish
@@ -384,6 +423,73 @@ Execue a function by using binary file -
         $buffer1 close
         $buffer2 close
         $buffer3 close
+        $queue close
+        $kernel close
+        $program close
+        $context close
+        $device close
+        $platform close
+    } on error {em} {
+        puts $em
+    }
+
+Test image object function (using tcl-stbimage to load image) -
+
+    package require vectcl
+    package require opencl
+    package require stbimage
+
+    set code {__kernel void PixelAccess(__read_only image2d_t imageIn,__write_only image2d_t imageOut)
+    {
+      sampler_t srcSampler = CLK_NORMALIZED_COORDS_FALSE | 
+        CLK_ADDRESS_CLAMP_TO_EDGE |
+        CLK_FILTER_NEAREST;
+       int2 imageCoord = (int2) (get_global_id(0), get_global_id(1));
+       uint4 pixel = read_imageui(imageIn, srcSampler, imageCoord);
+       write_imageui (imageOut, imageCoord, pixel);
+    }
+    }
+
+    if {$argc >= 1} {
+        set filename [lindex $argv 0]
+    } elseif {$argc == 0} {
+        puts "Please input a filename"
+        exit
+    }
+
+    try {
+        set d [::stbimage::load $filename]
+        set width [dict get $d width]
+        set height [dict get $d height]
+        set channel [dict get $d channel]
+
+        set platform [opencl::getPlatformID 1]
+        set device [opencl::getDeviceID $platform default 1]
+        set context [opencl::createContext $device $platform]
+        set queue [opencl::createCommandQueue $context $device]
+        set program [opencl::createProgramWithSource $context $code]
+        $program build
+
+        set kernel [opencl::createKernel $program "PixelAccess"]
+
+        set image1 [opencl::createImage $context r rgba image2d $width $height]
+        set image2 [opencl::createImage $context rw rgba image2d $width $height]
+
+        $queue enqueueWriteImage $image1 [dict get $d data]
+
+        $kernel setKernelArg 0 image $image1
+        $kernel setKernelArg 1 image $image2
+
+        $queue enqueueNDRangeKernel $kernel 2 [list $width $height] [list 1 1]
+        $queue finish
+
+        set output [$queue enqueueReadImage $image2]
+        $queue finish
+
+        ::stbimage::write png output.png $width $height $channel $output
+
+        $image1 close
+        $image2 close
         $queue close
         $kernel close
         $program close

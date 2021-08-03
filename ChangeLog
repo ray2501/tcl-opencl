@@ -1,5 +1,8 @@
 2021-08-03  Danilo Chang
 
+	* enqueueNDRangeKernel parameters changed
+	* setKernelArg will accept buffer and image, changed from mem
+	* Implement ::opencl::createImage command
 	* generic/tclopencl.c: Use long type to get length
 
 2021-08-01  Danilo Chang
