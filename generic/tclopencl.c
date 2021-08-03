@@ -176,7 +176,7 @@ static int createBuffer(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*ob
         return TCL_ERROR;
     }
 
-    if(Tcl_GetIntFromObj(interp, objv[4], (int *) &length) != TCL_OK) {
+    if(Tcl_GetLongFromObj(interp, objv[4], (long *) &length) != TCL_OK) {
         return TCL_ERROR;
     }
     if (length <= 0) {
