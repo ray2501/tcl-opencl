@@ -125,8 +125,8 @@ image2d
 UNIX BUILD
 =====
 
-Before building tcl-opencl, you need have VecTcl, ocl-icd and PoCL development
-files.
+Before building tcl-opencl, you need have VecTcl and ocl-icd development
+files, and opencl-headers header files.
 
 Building under most UNIX systems is easy, just run the configure script
 and then run make. For more information about the build process, see
