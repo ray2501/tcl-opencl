@@ -1,5 +1,6 @@
 2021-08-04  Danilo Chang
 
+	* Bump version to v0.3
 	* Update and fix version check for clCreateImage
 
 2021-08-03  Danilo Chang
