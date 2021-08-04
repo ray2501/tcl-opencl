@@ -463,6 +463,11 @@ Test image object function (using tcl-stbimage to load image) -
         set height [dict get $d height]
         set channel [dict get $d channel]
 
+        if {$channel != 4} {
+            puts "Not supported image format."
+            exit
+        }
+
         set platform [opencl::getPlatformID 1]
         set device [opencl::getDeviceID $platform default 1]
         set context [opencl::createContext $device $platform]
