@@ -134,7 +134,9 @@ static int createImage(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*obj
     cl_mem mem;
     cl_mem_flags flags = CL_MEM_READ_WRITE;
     cl_image_format imgformat;
+#if TCLOPENCL_CL_VERSION >= 0x1020
     cl_image_desc clImageDesc;
+#endif
     Tcl_HashEntry *newHashEntryPtr;
     Tcl_HashEntry *hashEntryPtr;
     Tcl_Obj *pResultStr = NULL;
@@ -231,6 +233,7 @@ static int createImage(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*obj
     /*
      * Now only support CL_MEM_OBJECT_IMAGE2D image type
      */
+#if TCLOPENCL_CL_VERSION >= 0x1020
     if (strcmp(imagetype, "image2d") == 0) {
         clImageDesc.image_type = CL_MEM_OBJECT_IMAGE2D;
         clImageDesc.image_width = width;
@@ -247,8 +250,9 @@ static int createImage(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*obj
         }
         return TCL_ERROR;
     }
+#endif
 
-#if TCLOPENCL_CL_VERSION > 0x1020
+#if TCLOPENCL_CL_VERSION >= 0x1020
     mem = clCreateImage(context, flags,
                         &imgformat, &clImageDesc, NULL, &err);
 #else
