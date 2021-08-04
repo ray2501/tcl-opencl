@@ -470,6 +470,22 @@ Test image object function (using tcl-stbimage to load image) -
 
         set platform [opencl::getPlatformID 1]
         set device [opencl::getDeviceID $platform default 1]
+
+        set isSupport [$device info image_support]
+        if {$isSupport == 0 } {
+            puts "Device doses not support images."
+            exit
+        } else {
+            set max_height_2d [$device info image2d_max_height]
+            set max_width_2d [$device info image2d_max_width]
+
+            if {$max_height_2d <= $height || $max_width_2d <= $width} {
+                puts "Error: height $height max $max_height_2d"
+                puts "       width  $width max $max_width_2d"
+                exit
+            }
+        }
+
         set context [opencl::createContext $device $platform]
         set queue [opencl::createCommandQueue $context $device]
         set program [opencl::createProgramWithSource $context $code]
