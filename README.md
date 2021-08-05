@@ -433,7 +433,8 @@ Execue a function by using binary file -
         puts $em
     }
 
-Test image object function (using tcl-stbimage to load image) -
+Test image object function
+(using [tcl-stbimage](https://github.com/ray2501/tcl-stbimage) to load image) -
 
     package require vectcl
     package require opencl
