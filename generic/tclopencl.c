@@ -2829,6 +2829,10 @@ Opencl_Init(Tcl_Interp *interp)
         return TCL_ERROR;
     }
 
+    if (Vectcl_InitStubs(interp, "0.3", 0) == NULL) {
+        return TCL_ERROR;
+    }
+
     if (Tcl_PkgProvide(interp, PACKAGE_NAME, PACKAGE_VERSION) != TCL_OK) {
         return TCL_ERROR;
     }

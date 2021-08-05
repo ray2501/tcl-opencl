@@ -1,3 +1,7 @@
+2021-08-05  Danilo Chang
+
+	* Call Vectcl_InitStubs in Opencl_Init
+
 2021-08-04  Danilo Chang
 
 	* Bump version to v0.3
