@@ -152,6 +152,7 @@ Examples
 
 Get basic info -
 
+    package require vectcl
     package require opencl
     set number [::opencl::getPlatformID]
     for {set i 1} {$i <= $number} {incr i} {
