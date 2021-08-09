@@ -463,9 +463,9 @@ Test image object function
         set d [::stbimage::load $filename]
         set width [dict get $d width]
         set height [dict get $d height]
-        set channel [dict get $d channel]
+        set channels [dict get $d channels]
 
-        if {$channel != 4} {
+        if {$channels != 4} {
             puts "Not supported image format."
             exit
         }
@@ -509,7 +509,7 @@ Test image object function
         set output [$queue enqueueReadImage $image2]
         $queue finish
 
-        ::stbimage::write png output.png $width $height $channel $output
+        ::stbimage::write png output.png $width $height $channels $output
 
         $image1 close
         $image2 close
@@ -558,9 +558,9 @@ Generate a grayscale image -
         set d [::stbimage::load $filename]
         set width [dict get $d width]
         set height [dict get $d height]
-        set channel [dict get $d channel]
+        set channels [dict get $d channels]
 
-        if {$channel != 4} {
+        if {$channels != 4} {
             puts "Not supported image format."
             exit
         }
@@ -604,7 +604,7 @@ Generate a grayscale image -
         set output [$queue enqueueReadImage $image2]
         $queue finish
 
-        ::stbimage::write png output.png $width $height $channel $output
+        ::stbimage::write png output.png $width $height $channels $output
 
         $image1 close
         $image2 close
