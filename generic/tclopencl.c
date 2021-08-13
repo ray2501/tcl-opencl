@@ -218,12 +218,15 @@ static int createImage(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*obj
     }
 
     /*
-     * Now only support RGBA format
+     * Now only support CL_RGBA and CL_A format
      */
     imgformat.image_channel_data_type = CL_UNSIGNED_INT8;
     if (strcmp(format, "rgba") == 0) {
         imgformat.image_channel_order = CL_RGBA;
         channel = 4;
+    } else if (strcmp(format, "a") == 0) {
+        imgformat.image_channel_order = CL_A;
+        channel = 1;
     } else {
         if( interp ) {
             Tcl_Obj *resultObj = Tcl_GetObjResult( interp );
@@ -903,7 +906,7 @@ static int PROGRAM_FUNCTION(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *cons
                 binary = (unsigned char *) ckalloc(binary_size * sizeof(unsigned char));
                 clGetProgramInfo(program, CL_PROGRAM_BINARIES, binary_size, &binary, NULL);
                 Tcl_SetObjResult(interp, Tcl_NewByteArrayObj( binary, binary_size));
-                if (binary) ckfree(binary);
+                ckfree(binary);
             } else {
                 if( interp ) {
                     Tcl_Obj *resultObj = Tcl_GetObjResult( interp );
@@ -1235,12 +1238,12 @@ static int QUEUE_FUNCTION(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*
                 long int *tmpptr = (long int *) arrptr;
                 int i = 0;
 
-                tmpbuffer = (int *) malloc (buffer->length * sizeof(int));
+                tmpbuffer = (int *) ckalloc (buffer->length * sizeof(int));
                 if(!tmpbuffer) {
                     if( interp ) {
                         Tcl_Obj *resultObj = Tcl_GetObjResult( interp );
                         Tcl_AppendStringsToObj( resultObj,
-                                                "Write: int malloc memory failed",
+                                                "Write: int ckalloc memory failed",
                                                 (char *)NULL );
                     }
 
@@ -1257,7 +1260,7 @@ static int QUEUE_FUNCTION(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*
                 err = clEnqueueWriteBuffer( queue, buffer->mem, CL_TRUE, 0,
                                             buffer->length * sizeof(int),
                                             tmpbuffer, 0, NULL, NULL );
-                if(tmpbuffer) free(tmpbuffer);
+                ckfree(tmpbuffer);
                 tmpbuffer = NULL;
             } else if (buffer->typevalue == 8 && arr_info->type == 1) {
                 err = clEnqueueWriteBuffer( queue, buffer->mem, CL_TRUE, 0,
@@ -1317,11 +1320,11 @@ static int QUEUE_FUNCTION(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*
                 long int *tmpptr = NULL;
                 int *tmpbuffer = NULL;
                 int i = 0;
-                tmpbuffer = (int *) malloc (buffer->length * sizeof(int));
+                tmpbuffer = (int *) ckalloc (buffer->length * sizeof(int));
                 if(!tmpbuffer) {
                     if( interp ) {
                         Tcl_Obj *resultObj = Tcl_GetObjResult( interp );
-                        Tcl_AppendStringsToObj( resultObj, "Write: int malloc memory failed",
+                        Tcl_AppendStringsToObj( resultObj, "Write: int ckalloc memory failed",
                                                 (char *)NULL );
                     }
 
@@ -1340,7 +1343,7 @@ static int QUEUE_FUNCTION(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*
                     *(tmpptr + i) = (long int) *(tmpbuffer + i);
                 }
 
-                if(tmpbuffer) free(tmpbuffer);
+                ckfree(tmpbuffer);
                 tmpbuffer = NULL;
             } else if(buffer->typevalue == 8) {
                 result = NumArrayNewVector(NumArray_Int, buffer->length);
@@ -1540,19 +1543,20 @@ static int QUEUE_FUNCTION(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*
             image = (clImageInfo *) Tcl_GetHashValue( hashEntryPtr );
 
             length = image->width * image->height  * image->channel;
-            byteptr = (unsigned char *) malloc(length * sizeof(unsigned char));
+            byteptr = (unsigned char *) ckalloc(length * sizeof(unsigned char));
             if(byteptr) {
                 size_t origin[3] = {0, 0, 0};
                 size_t region[3] = {image->width, image->height, 1};
 
                 err = clEnqueueReadImage( queue, image->mem, CL_TRUE,
                                           origin, region,
-                                          image->width * sizeof(unsigned char) * 4, 0,
+                                          image->width * sizeof(unsigned char) * image->channel,
+                                          0,
                                           byteptr, 0, NULL, NULL);
             } else {
                 if( interp ) {
                     Tcl_Obj *resultObj = Tcl_GetObjResult( interp );
-                    Tcl_AppendStringsToObj( resultObj, "malloc byte array failed",
+                    Tcl_AppendStringsToObj( resultObj, "ckalloc byte array failed",
                                             (char *)NULL );
                 }
 
@@ -1560,7 +1564,7 @@ static int QUEUE_FUNCTION(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*
             }
 
             if (err != CL_SUCCESS) {
-               if (byteptr) free(byteptr);
+               ckfree(byteptr);
                if( interp ) {
                    Tcl_Obj *resultObj = Tcl_GetObjResult( interp );
                    Tcl_AppendStringsToObj( resultObj, "clEnqueueReadImage failed",
@@ -1572,7 +1576,7 @@ static int QUEUE_FUNCTION(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*
 
             result = Tcl_NewByteArrayObj(byteptr, length);
             Tcl_SetObjResult(interp, result);
-            if (byteptr) free(byteptr);
+            ckfree(byteptr);
             break;
         }
         case FUNC_ENQUEUECOPYIMAGE: {
@@ -1711,15 +1715,15 @@ static int QUEUE_FUNCTION(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*
                     return TCL_ERROR;
                 }
 
-                size_t *global_work_size = (size_t *) malloc(sizeof(size_t) * count1);
-                size_t *local_work_size = (size_t *) malloc(sizeof(size_t) * count2);
+                size_t *global_work_size = (size_t *) ckalloc(sizeof(size_t) * count1);
+                size_t *local_work_size = (size_t *) ckalloc(sizeof(size_t) * count2);
 
                 for(count = 0; count < count1; count++) {
                     long x = 0;
                     Tcl_ListObjIndex(interp, objv[4], count, &elemListPtr);
                     if(Tcl_GetLongFromObj(interp, elemListPtr, &x) != TCL_OK) {
-                        if(global_work_size) free(global_work_size);
-                        if(local_work_size) free(local_work_size);
+                        ckfree(global_work_size);
+                        ckfree(local_work_size);
                         return TCL_ERROR;
                     }
 
@@ -1730,8 +1734,8 @@ static int QUEUE_FUNCTION(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*
                     long x = 0;
                     Tcl_ListObjIndex(interp, objv[5], count, &elemListPtr);
                     if(Tcl_GetLongFromObj(interp, elemListPtr, &x) != TCL_OK) {
-                        if(global_work_size) free(global_work_size);
-                        if(local_work_size) free(local_work_size);
+                        ckfree(global_work_size);
+                        ckfree(local_work_size);
                         return TCL_ERROR;
                     }
 
@@ -1741,8 +1745,8 @@ static int QUEUE_FUNCTION(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*
                 err = clEnqueueNDRangeKernel(queue, kernel, work_dim, NULL,
                         global_work_size, local_work_size, 0, NULL, NULL);
                 if (err != CL_SUCCESS) {
-                    if(global_work_size) free(global_work_size);
-                    if(local_work_size) free(local_work_size);
+                    ckfree(global_work_size);
+                    ckfree(local_work_size);
 
                     if( interp ) {
                         Tcl_Obj *resultObj = Tcl_GetObjResult( interp );
@@ -1753,8 +1757,8 @@ static int QUEUE_FUNCTION(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*
                     return TCL_ERROR;
                 }
 
-                if(global_work_size) free(global_work_size);
-                if(local_work_size) free(local_work_size);
+                ckfree(global_work_size);
+                ckfree(local_work_size);
             }
 
             break;
@@ -2297,7 +2301,7 @@ static int DEVICE_FUNCTION(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const
                 buffer = (char *) ckalloc (sizeof(char) * (size + 1));
                 error = clGetDeviceInfo(device, param_name, size + 1, buffer, NULL);
                 if (error != CL_SUCCESS) {
-                    if (buffer) ckfree(buffer);
+                    ckfree(buffer);
 
                     if( interp ) {
                         Tcl_Obj *resultObj = Tcl_GetObjResult( interp );
@@ -2309,7 +2313,7 @@ static int DEVICE_FUNCTION(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const
                 }
 
                 pResultStr = Tcl_NewStringObj( buffer, -1 );
-                if (buffer) ckfree(buffer);
+                ckfree(buffer);
                 Tcl_SetObjResult(interp, pResultStr);
             } else if (type == 2) {
                 cl_bool value = CL_TRUE;
@@ -2452,7 +2456,7 @@ static int DEVICE_FUNCTION(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const
                 buffer = (size_t *) ckalloc (sizeof(size_t) * size );
                 error = clGetDeviceInfo(device, param_name, size, buffer, NULL);
                 if (error != CL_SUCCESS) {
-                    if (buffer) ckfree(buffer);
+                    ckfree(buffer);
 
                     if( interp ) {
                         Tcl_Obj *resultObj = Tcl_GetObjResult( interp );
@@ -2468,7 +2472,7 @@ static int DEVICE_FUNCTION(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const
                     Tcl_ListObjAppendElement(interp, pResultStr, Tcl_NewIntObj(buffer[count]));
                 }
 
-                if (buffer) ckfree(buffer);
+                ckfree(buffer);
                 Tcl_SetObjResult(interp, pResultStr);
             }
 
@@ -2704,7 +2708,7 @@ static int PLATFORM_FUNCTION(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *con
             buffer = (char *) ckalloc (sizeof(char) * (size + 1));
             error = clGetPlatformInfo(platform, param_name, size + 1, buffer, NULL);
             if (error != CL_SUCCESS) {
-                if (buffer) ckfree(buffer);
+                ckfree(buffer);
 
                 if( interp ) {
                     Tcl_Obj *resultObj = Tcl_GetObjResult( interp );
@@ -2716,7 +2720,7 @@ static int PLATFORM_FUNCTION(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *con
             }
 
             pResultStr = Tcl_NewStringObj( buffer, -1 );
-            if (buffer) ckfree(buffer);
+            ckfree(buffer);
             Tcl_SetObjResult(interp, pResultStr);
 
             break;

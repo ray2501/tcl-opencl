@@ -116,7 +116,7 @@ imageHandle close
 r, w, rw  
 
 format value should be -  
-rgba  
+a, rgba  
 
 imagetype value should be -  
 image2d  
