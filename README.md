@@ -733,3 +733,106 @@ Tk photo image and CRIMP to write a ppm image.
 
     exit
 
+Below example is using Tk
+via [tcl-imagebytes](https://github.com/ray2501/tcl-imagebytes) to
+read and write a png file (Tk provides built-in support for PNG since 8.6) -
+
+    package require Tk
+    package require vectcl
+    package require opencl
+    package require imagebytes
+
+    set code {__constant sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE |
+                                    CLK_ADDRESS_CLAMP_TO_EDGE |
+                                    CLK_FILTER_LINEAR;
+
+    __kernel void Grayscale(__read_only image2d_t imgIn, __write_only image2d_t imgOut) {
+        int2 gid = (int2)(get_global_id(0), get_global_id(1));
+        int2 size = get_image_dim(imgIn);
+
+        if(all(gid < size)){
+            uint4 pixel = read_imageui(imgIn, sampler, gid);
+            float4 color = convert_float4(pixel) / 255;
+            color.xyz = 0.2126*color.x + 0.7152*color.y + 0.0722*color.z;
+            pixel = convert_uint4_rte(color * 255);
+            write_imageui(imgOut, gid, pixel);
+        }
+    }
+    }
+
+    if {$argc >= 1} {
+        set filename [lindex $argv 0]
+    } elseif {$argc == 0} {
+        puts "Please input a filename"
+        exit
+    }
+
+    try {
+        image create photo imgobj -format png -file $filename
+        set d [bytesFromPhoto imgobj]
+        set width [dict get $d width]
+        set height [dict get $d height]
+        set channels [dict get $d channels]
+        set data [dict get $d data]
+
+        if {$channels != 4} {
+            puts "Not supported image format."
+            exit
+        }
+
+        set platform [opencl::getPlatformID 1]
+        set device [opencl::getDeviceID $platform default 1]
+
+        set isSupport [$device info image_support]
+        if {$isSupport == 0 } {
+            puts "Device doses not support images."
+            exit
+        } else {
+            set max_height_2d [$device info image2d_max_height]
+            set max_width_2d [$device info image2d_max_width]
+
+            if {$max_height_2d <= $height || $max_width_2d <= $width} {
+                puts "Error: height $height max $max_height_2d"
+                puts "       width  $width max $max_width_2d"
+                exit
+            }
+        }
+
+        set context [opencl::createContext $device $platform]
+        set queue [opencl::createCommandQueue $context $device]
+        set program [opencl::createProgramWithSource $context $code]
+        $program build
+
+        set kernel [opencl::createKernel $program "Grayscale"]
+
+        set image1 [opencl::createImage $context r rgba image2d $width $height]
+        set image2 [opencl::createImage $context rw rgba image2d $width $height]
+
+        $queue enqueueWriteImage $image1 $data
+
+        $kernel setKernelArg 0 image $image1
+        $kernel setKernelArg 1 image $image2
+
+        $queue enqueueNDRangeKernel $kernel 2 [list $width $height] [list 1 1]
+        $queue finish
+
+        set output [$queue enqueueReadImage $image2]
+        $queue finish
+
+        bytesToPhoto $output imgobj $width $height $channels
+        imgobj write "output.png" -format png
+
+        $image1 close
+        $image2 close
+        $queue close
+        $kernel close
+        $program close
+        $context close
+        $device close
+        $platform close
+    } on error {em} {
+        puts $em
+    }
+
+    exit
+
