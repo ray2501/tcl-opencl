@@ -146,8 +146,8 @@ static int createImage(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*obj
     char *flag = NULL;
     char *format = NULL;
     char *imagetype = NULL;
-    int width = 0;
-    int height = 0;
+    size_t width = 0;
+    size_t height = 0;
     int len = 0;
     clImageInfo *imageinfo;
 
