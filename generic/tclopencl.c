@@ -148,6 +148,7 @@ static int createImage(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*obj
     char *imagetype = NULL;
     size_t width = 0;
     size_t height = 0;
+    size_t channel = 0;
     int len = 0;
     clImageInfo *imageinfo;
 
@@ -222,6 +223,7 @@ static int createImage(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*obj
     imgformat.image_channel_data_type = CL_UNSIGNED_INT8;
     if (strcmp(format, "rgba") == 0) {
         imgformat.image_channel_order = CL_RGBA;
+        channel = 4;
     } else {
         if( interp ) {
             Tcl_Obj *resultObj = Tcl_GetObjResult( interp );
@@ -272,7 +274,7 @@ static int createImage(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*obj
     imageinfo->mem = mem;
     imageinfo->width = width;
     imageinfo->height = height;
-    imageinfo->channel = 4;
+    imageinfo->channel = channel;
 
     Tcl_MutexLock(&myMutex);
     sprintf( handleName, "cl-image%d", tsdPtr->image_count++ );
