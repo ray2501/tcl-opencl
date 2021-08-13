@@ -618,3 +618,118 @@ Generate a grayscale image -
         puts $em
     }
 
+It is using [CRIMP](https://core.tcl.tk/akupries/crimp/home) to read a
+ppm image, and using [tcl-imagebytes](https://github.com/ray2501/tcl-imagebytes),
+Tk photo image and CRIMP to write a ppm image.
+
+    package require Tk
+    package require vectcl
+    package require opencl
+    package require crimp
+    package require crimp::ppm
+    package require crimp::tk
+    package require imagebytes
+
+    set code {__constant sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE |
+                                    CLK_ADDRESS_CLAMP_TO_EDGE |
+                                    CLK_FILTER_LINEAR;
+
+    __kernel void Grayscale(__read_only image2d_t imgIn, __write_only image2d_t imgOut) {
+        int2 gid = (int2)(get_global_id(0), get_global_id(1));
+        int2 size = get_image_dim(imgIn);
+
+        if(all(gid < size)){
+            uint4 pixel = read_imageui(imgIn, sampler, gid);
+            float4 color = convert_float4(pixel) / 255;
+            color.xyz = 0.2126*color.x + 0.7152*color.y + 0.0722*color.z;
+            pixel = convert_uint4_rte(color * 255);
+            write_imageui(imgOut, gid, pixel);
+        }
+    }
+    }
+
+    if {$argc >= 1} {
+        set filename [lindex $argv 0]
+    } elseif {$argc == 0} {
+        puts "Please input a filename"
+        exit
+    }
+
+    try {
+        # It is using CRIMP to read a ppm image file and convert to RGBA format
+        set f [open $filename "r+b"]
+        set imgdata [read $f]
+        close $f
+        set img [::crimp read ppm $imgdata]
+        set img [::crimp convert 2hsv $img]
+        set img [::crimp convert 2rgba $img]
+        set width [::crimp width $img]
+        set height [::crimp height $img]
+        set channels [llength [::crimp channels $img]]
+        set data [::crimp pixel $img]
+
+        if {$channels != 4} {
+            puts "Not supported image format."
+            exit
+        }
+
+        set platform [opencl::getPlatformID 1]
+        set device [opencl::getDeviceID $platform default 1]
+
+        set isSupport [$device info image_support]
+        if {$isSupport == 0 } {
+            puts "Device doses not support images."
+            exit
+        } else {
+            set max_height_2d [$device info image2d_max_height]
+            set max_width_2d [$device info image2d_max_width]
+
+            if {$max_height_2d <= $height || $max_width_2d <= $width} {
+                puts "Error: height $height max $max_height_2d"
+                puts "       width  $width max $max_width_2d"
+                exit
+            }
+        }
+
+        set context [opencl::createContext $device $platform]
+        set queue [opencl::createCommandQueue $context $device]
+        set program [opencl::createProgramWithSource $context $code]
+        $program build
+
+        set kernel [opencl::createKernel $program "Grayscale"]
+
+        set image1 [opencl::createImage $context r rgba image2d $width $height]
+        set image2 [opencl::createImage $context rw rgba image2d $width $height]
+
+        $queue enqueueWriteImage $image1 $data
+
+        $kernel setKernelArg 0 image $image1
+        $kernel setKernelArg 1 image $image2
+
+        $queue enqueueNDRangeKernel $kernel 2 [list $width $height] [list 1 1]
+        $queue finish
+
+        set output [$queue enqueueReadImage $image2]
+        $queue finish
+
+        # I don't know how to write raw data to CRIMP image obj directly.
+        # Below code is using imagebytes, Tk photo image and ::crimp::tk function.
+        image create photo imgobj
+        bytesToPhoto $output imgobj $width $height $channels
+        set outputimg [::crimp read tk imgobj]
+        ::crimp write 2file ppm-raw "output.ppm" $outputimg
+
+        $image1 close
+        $image2 close
+        $queue close
+        $kernel close
+        $program close
+        $context close
+        $device close
+        $platform close
+    } on error {em} {
+        puts $em
+    }
+
+    exit
+
