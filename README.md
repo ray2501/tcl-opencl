@@ -523,6 +523,94 @@ Test image object function
         puts $em
     }
 
+Test image object function -
+
+    package require vectcl
+    package require opencl
+    package require stbimage
+
+    set code {__kernel void PixelAccess(__read_only image2d_t imageIn,__write_only image2d_t imageOut)
+    {
+      sampler_t srcSampler = CLK_NORMALIZED_COORDS_FALSE | 
+        CLK_ADDRESS_CLAMP_TO_EDGE |
+        CLK_FILTER_NEAREST;
+       int2 imageCoord = (int2) (get_global_id(0), get_global_id(1));
+       uint4 pixel = read_imageui(imageIn, srcSampler, imageCoord);
+       write_imageui (imageOut, imageCoord, pixel);
+    }
+    }
+
+    if {$argc >= 1} {
+        set filename [lindex $argv 0]
+    } elseif {$argc == 0} {
+        puts "Please input a filename"
+        exit
+    }
+
+    try {
+        set d [::stbimage::load $filename]
+        set width [dict get $d width]
+        set height [dict get $d height]
+        set channels [dict get $d channels]
+
+        if {$channels != 1} {
+            puts "Not supported image format."
+            exit
+        }
+
+        set platform [opencl::getPlatformID 1]
+        set device [opencl::getDeviceID $platform default 1]
+
+        set isSupport [$device info image_support]
+        if {$isSupport == 0 } {
+            puts "Device doses not support images."
+            exit
+        } else {
+            set max_height_2d [$device info image2d_max_height]
+            set max_width_2d [$device info image2d_max_width]
+
+            if {$max_height_2d <= $height || $max_width_2d <= $width} {
+                puts "Error: height $height max $max_height_2d"
+                puts "       width  $width max $max_width_2d"
+                exit
+            }
+        }
+
+        set context [opencl::createContext $device $platform]
+        set queue [opencl::createCommandQueue $context $device]
+        set program [opencl::createProgramWithSource $context $code]
+        $program build
+
+        set kernel [opencl::createKernel $program "PixelAccess"]
+
+        set image1 [opencl::createImage $context r a image2d $width $height]
+        set image2 [opencl::createImage $context w a image2d $width $height]
+
+        $queue enqueueWriteImage $image1 [dict get $d data]
+
+        $kernel setKernelArg 0 image $image1
+        $kernel setKernelArg 1 image $image2
+
+        $queue enqueueNDRangeKernel $kernel 2 [list $width $height] [list 1 1]
+        $queue finish
+
+        set output [$queue enqueueReadImage $image2]
+        $queue finish
+
+        ::stbimage::write png output.png $width $height $channels $output
+
+        $image1 close
+        $image2 close
+        $queue close
+        $kernel close
+        $program close
+        $context close
+        $device close
+        $platform close
+    } on error {em} {
+        puts $em
+    }
+
 Generate a grayscale image -
 
     package require vectcl
@@ -835,4 +923,3 @@ read and write a png file (Tk provides built-in support for PNG since 8.6) -
     }
 
     exit
-
