@@ -147,6 +147,36 @@ below is an example:
     $ make install
 
 
+Windows BUILD
+=====
+
+### MSYS2
+
+[Msys2](https://www.msys2.org/)  provides a Unix-style build while generating
+native Windows binaries. Using the Msys2 build tools means that you can use
+the same configure script as per the Unix build to create a Makefile.
+
+Before building tcl-opencl, you need install VeclTcl and have VecTcl
+development files.
+
+Using below command to install x86_64 OpenCL packages for Mingw-w64
+(not sync to the latest code, but still can work):
+
+    pacman -S mingw-w64-x86_64-opencl-icd-git mingw-w64-x86_64-opencl-headers
+
+If you need setup directory containing tcl and VecTclconfiguration (tclConfig.sh
+and vectclConfig.sh), below is an example:
+
+    $ cd tcl-opencl
+    $ ./configure --prefix=/opt/tcl --with-tcl=/opt/tcl/lib --with-vectcl=/opt/tcl/lib/vectcl0.3
+    $ make
+    $ make install
+
+You also need to install an OpenCL implementation that can work in your
+environment. For example, you can download
+[CUDA Toolkit](https://developer.nvidia.com/cuda-downloads) for NVIDIA product.
+
+
 Examples
 =====
 
