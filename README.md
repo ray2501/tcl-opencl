@@ -164,7 +164,7 @@ Using below command to install x86_64 OpenCL packages for Mingw-w64
 
     pacman -S mingw-w64-x86_64-opencl-icd-git mingw-w64-x86_64-opencl-headers
 
-If you need setup directory containing tcl and VecTclconfiguration (tclConfig.sh
+If you need setup directory containing tcl and VecTcl configuration (tclConfig.sh
 and vectclConfig.sh), below is an example:
 
     $ cd tcl-opencl
