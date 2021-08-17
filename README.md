@@ -156,7 +156,7 @@ Windows BUILD
 native Windows binaries. Using the Msys2 build tools means that you can use
 the same configure script as per the Unix build to create a Makefile.
 
-Before building tcl-opencl, you need install VeclTcl and have VecTcl
+Before building tcl-opencl, you need install VecTcl and have VecTcl
 development files.
 
 Using below command to install x86_64 OpenCL packages for Mingw-w64
