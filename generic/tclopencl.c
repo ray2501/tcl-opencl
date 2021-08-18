@@ -2862,6 +2862,13 @@ Opencl_Init(Tcl_Interp *interp)
         Tcl_InitHashTable(tsdPtr->cl_hashtblPtr, TCL_STRING_KEYS);
 
         tsdPtr->platform_count = 0;
+        tsdPtr->device_count = 0;
+        tsdPtr->context_count = 0;
+        tsdPtr->queue_count = 0;
+        tsdPtr->program_count = 0;
+        tsdPtr->kernel_count = 0;
+        tsdPtr->buffer_count = 0;
+        tsdPtr->image_count = 0;
     }
     Tcl_MutexUnlock(&myMutex);
 
