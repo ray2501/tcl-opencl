@@ -5,7 +5,7 @@
 
 Name:          tcl-opencl
 Summary:       Tcl extension for OpenCL
-Version:       0.5
+Version:       0.6
 Release:       0
 License:       MIT
 Group:         Development/Libraries/Tcl
