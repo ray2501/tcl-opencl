@@ -149,7 +149,7 @@ static int createImage(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*obj
     size_t width = 0;
     size_t height = 0;
     size_t channel = 0;
-    int len = 0;
+    Tcl_Size len = 0;
     clImageInfo *imageinfo;
 
     ThreadSpecificData *tsdPtr = (ThreadSpecificData *)
@@ -388,7 +388,7 @@ static int createBuffer(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*ob
     char *flag = NULL;
     char *type = NULL;
     int typevalue = 11;
-    int len = 0;
+    Tcl_Size len = 0;
     size_t length= 0;
     clBufferInfo *bufferinfo;
 
@@ -717,7 +717,7 @@ static int createKernel(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*ob
     int newvalue;
     char *chandle = NULL;
     char *kernel_name = NULL;
-    int len = 0;
+    Tcl_Size len = 0;
 
     ThreadSpecificData *tsdPtr = (ThreadSpecificData *)
       Tcl_GetThreadData(&dataKey, sizeof(ThreadSpecificData));
@@ -851,7 +851,7 @@ static int PROGRAM_FUNCTION(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *cons
         }
         case FUNC_INFO: {
             char *property = NULL;
-            int len = 0;
+            Tcl_Size len = 0;
             size_t binary_size = 0;
 
             if( objc != 3 ){
@@ -952,7 +952,7 @@ static int createProgramWithSource(void *cd, Tcl_Interp *interp, int objc,Tcl_Ob
     int newvalue;
     char *chandle = NULL;
     char *source = NULL;
-    int len = 0;
+    Tcl_Size len = 0;
 
     ThreadSpecificData *tsdPtr = (ThreadSpecificData *)
       Tcl_GetThreadData(&dataKey, sizeof(ThreadSpecificData));
@@ -1072,7 +1072,7 @@ static int createProgramWithBinary(void *cd, Tcl_Interp *interp, int objc,Tcl_Ob
 
     device = (cl_device_id) Tcl_GetHashValue( hashEntryPtr );
 
-    binary = Tcl_GetByteArrayFromObj(objv[3], (int *) &len);
+    binary = Tcl_GetByteArrayFromObj(objv[3],  (Tcl_Size *) &len);
     if( !binary || len < 1 ){
         return TCL_ERROR;
     }
@@ -1455,7 +1455,7 @@ static int QUEUE_FUNCTION(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*
             char *bhandle = NULL;
             clImageInfo *image = NULL;
             unsigned char *bytearray = NULL;
-            int length = 0;
+            Tcl_Size length = 0;
 
             if( objc != 4 ){
                 Tcl_WrongNumArgs(interp, 2, objv, "image bytearray");
@@ -1698,9 +1698,9 @@ static int QUEUE_FUNCTION(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*
                     return TCL_ERROR;
                 }
             } else {
-                int count1 = 0;
-                int count2 = 0;
-                int count = 0;
+                Tcl_Size count1 = 0;
+                Tcl_Size count2 = 0;
+                Tcl_Size count = 0;
                 Tcl_Obj *elemListPtr = NULL;
 
                 if(Tcl_ListObjLength(interp, objv[4], &count1) != TCL_OK) {
@@ -2119,7 +2119,7 @@ static int DEVICE_FUNCTION(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const
     switch( (enum FUNC_enum)choice ){
         case FUNC_INFO: {
             char *param = NULL;
-            int len = 0;
+            Tcl_Size len = 0;
             cl_platform_info param_name = CL_DEVICE_NAME;
             cl_int error;
             size_t size;
@@ -2512,7 +2512,7 @@ static int getDeviceID(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *const*obj
     Tcl_HashEntry *hashEntryPtr;
     char *handle = NULL;
     char *type = NULL;
-    int len = 0;
+    Tcl_Size len = 0;
 
     ThreadSpecificData *tsdPtr = (ThreadSpecificData *)
       Tcl_GetThreadData(&dataKey, sizeof(ThreadSpecificData));
@@ -2666,7 +2666,7 @@ static int PLATFORM_FUNCTION(void *cd, Tcl_Interp *interp, int objc,Tcl_Obj *con
         case FUNC_INFO: {
             char *param = NULL;
             char *buffer = NULL;
-            int len = 0;
+            Tcl_Size len = 0;
             cl_platform_info param_name = CL_PLATFORM_PROFILE;
             cl_int error;
             size_t size;
@@ -2831,7 +2831,7 @@ Opencl_Init(Tcl_Interp *interp)
 {
     Tcl_Namespace *nsPtr; /* pointer to hold our own new namespace */
 
-    if (Tcl_InitStubs(interp, "8.6", 0) == NULL) {
+    if (Tcl_InitStubs(interp, TCL_VERSION, 0) == NULL) {
         return TCL_ERROR;
     }
 
@@ -2843,7 +2843,7 @@ Opencl_Init(Tcl_Interp *interp)
         return TCL_ERROR;
     }
 
-    nsPtr = Tcl_CreateNamespace(interp, NS, NULL, NULL);
+    nsPtr = Tcl_CreateNamespace(interp, "::" NS, NULL, NULL);
     if (nsPtr == NULL) {
         return TCL_ERROR;
     }
@@ -2875,39 +2875,39 @@ Opencl_Init(Tcl_Interp *interp)
     /* Add a thread exit handler to delete hash table */
     Tcl_CreateThreadExitHandler(OPENCL_Thread_Exit, (ClientData)NULL);
 
-    Tcl_CreateObjCommand(interp, NS "::getPlatformID",
+    Tcl_CreateObjCommand(interp, "::" NS "::getPlatformID",
         (Tcl_ObjCmdProc *) getPlatformID,
         (ClientData)NULL, (Tcl_CmdDeleteProc *)NULL);
 
-    Tcl_CreateObjCommand(interp, NS "::getDeviceID",
+    Tcl_CreateObjCommand(interp, "::" NS "::getDeviceID",
         (Tcl_ObjCmdProc *) getDeviceID,
         (ClientData)NULL, (Tcl_CmdDeleteProc *)NULL);
 
-    Tcl_CreateObjCommand(interp, NS "::createContext",
+    Tcl_CreateObjCommand(interp, "::" NS "::createContext",
         (Tcl_ObjCmdProc *) createContext,
         (ClientData)NULL, (Tcl_CmdDeleteProc *)NULL);
 
-    Tcl_CreateObjCommand(interp, NS "::createCommandQueue",
+    Tcl_CreateObjCommand(interp, "::" NS "::createCommandQueue",
         (Tcl_ObjCmdProc *) createCommandQueue,
         (ClientData)NULL, (Tcl_CmdDeleteProc *)NULL);
 
-    Tcl_CreateObjCommand(interp, NS "::createProgramWithSource",
+    Tcl_CreateObjCommand(interp, "::" NS "::createProgramWithSource",
         (Tcl_ObjCmdProc *) createProgramWithSource,
         (ClientData)NULL, (Tcl_CmdDeleteProc *)NULL);
 
-    Tcl_CreateObjCommand(interp, NS "::createProgramWithBinary",
+    Tcl_CreateObjCommand(interp, "::" NS "::createProgramWithBinary",
         (Tcl_ObjCmdProc *) createProgramWithBinary,
         (ClientData)NULL, (Tcl_CmdDeleteProc *)NULL);
 
-    Tcl_CreateObjCommand(interp, NS "::createKernel",
+    Tcl_CreateObjCommand(interp, "::" NS "::createKernel",
         (Tcl_ObjCmdProc *) createKernel,
         (ClientData)NULL, (Tcl_CmdDeleteProc *)NULL);
 
-    Tcl_CreateObjCommand(interp, NS "::createBuffer",
+    Tcl_CreateObjCommand(interp, "::" NS "::createBuffer",
         (Tcl_ObjCmdProc *) createBuffer,
         (ClientData)NULL, (Tcl_CmdDeleteProc *)NULL);
 
-    Tcl_CreateObjCommand(interp, NS "::createImage",
+    Tcl_CreateObjCommand(interp, "::" NS "::createImage",
         (Tcl_ObjCmdProc *) createImage,
         (ClientData)NULL, (Tcl_CmdDeleteProc *)NULL);
 
